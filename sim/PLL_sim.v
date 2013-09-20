@@ -31,12 +31,13 @@ class t_PLL
    int m_posedge2;
    int m_posedge1;        
    int m_locked;
+   int m_locking;
    int m_T;
  public:
   // CONSTRUCTORS
    t_PLL()
    {
-    m_posedge2 = m_posedge1 = m_locked = 0;            
+    m_posedge2 = m_posedge1 = m_locked = m_locking = 0;
     m_T = 10;
     }
   
@@ -44,22 +45,35 @@ class t_PLL
   }
   
   inline bool posedge(int32_t debug) {
-    if(!m_locked < 10) {
-      m_locked++;
-    
+    m_posedge1 = m_posedge2;
+    m_posedge2 = main_time;
+    int delta = m_posedge2-m_posedge1;
 
-      m_posedge1 = m_posedge2;
-      m_posedge2 = main_time;
-      m_T = m_posedge2 - m_posedge1;
-      if(m_T == 0) m_T = 10;
+    if (m_locking < 10) { // 10 in a row
+        if (m_T == delta) m_locking++;
+        else m_locking=0;
+        if (m_locking==10) {
+            if (debug) printf ( "LOCKING pll %p at %d\n", this, m_T );
+        }
+    } else {
+        if (m_T == delta) m_locked++;
+        else {
+            if (debug) printf ( "WARN pll %p new old=%d new=%d\n", this, m_T, delta );
+            m_locked=0;
+            m_locking=0;
+        }
     }
+
+    m_T = delta; 
     return true;
+
   }
 
   inline bool clkFX(bool x, int32_t m, int32_t d, int32_t debug) {
-    if ( !m || !d || !m_locked) { return false; }
+    if ( !m || !d || !m_locked || !m_T) { return false; }
     bool clko;
     int dT = (m_T*d) / 2 / m;
+    if (!dT) return false;
     clko = (main_time / dT) % 2; 
     return clko;
   }
