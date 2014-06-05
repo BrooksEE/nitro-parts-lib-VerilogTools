@@ -6,12 +6,17 @@
 module PLL_sim
  (input      input_clk,
   output     output_clk,
-  input int  pll_mult,
-  input int  pll_div,
-  input int debug);
+  input [31:0] pll_mult,
+  input [31:0] pll_div,
+  input debug);
 
 
-`ifdef verilator
+`ifndef verilator
+
+ reg output_clkr; // driven in testbench for now.
+ assign output_clk=output_clkr;
+
+`else
 
    reg x;
    always @(posedge input_clk) begin
