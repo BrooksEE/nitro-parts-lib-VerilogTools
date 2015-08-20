@@ -1,3 +1,4 @@
+// Dual Clock Fifo. 
 
 module FIFO #(parameter ADDR_WIDTH=4, DATA_WIDTH=8)
    (
@@ -81,7 +82,7 @@ module FIFO #(parameter ADDR_WIDTH=4, DATA_WIDTH=8)
       end
    end
 
-   FIFO_RAM #(.ADDR_WIDTH(ADDR_WIDTH), .DATA_WIDTH(DATA_WIDTH))
+   fifo_ram #(.ADDR_WIDTH(ADDR_WIDTH), .DATA_WIDTH(DATA_WIDTH))
       RAM(
 	  .clka(wclk),
 	  .clkb(rclk),
@@ -96,31 +97,4 @@ module FIFO #(parameter ADDR_WIDTH=4, DATA_WIDTH=8)
 endmodule
 
 	    
-///////////////////////////////////////////////////////////////////////////////
-// Dual-Port Block RAM with Different Clocks (from XST User Manual)
-module FIFO_RAM
-   #(parameter ADDR_WIDTH = 4, DATA_WIDTH=8)
-   (
-    input  clka,
-    input  clkb,
-    input  wea,
-    input  [ADDR_WIDTH-1:0] addra,
-    input  [ADDR_WIDTH-1:0] addrb,
-    input  [DATA_WIDTH-1:0] dia,
-    output [DATA_WIDTH-1:0] doa,
-    output [DATA_WIDTH-1:0] dob
-    );
 
-   reg [DATA_WIDTH-1:0]     RAM [(1<<ADDR_WIDTH)-1:0];
-   reg [ADDR_WIDTH-1:0]     read_addra;
-   reg [ADDR_WIDTH-1:0]     read_addrb;
-   always @(posedge clka) begin
-      if (wea == 1'b1) RAM[addra] <= dia;
-      read_addra <= addra;
-   end
-   always @(posedge clkb) begin
-      read_addrb <= addrb;
-   end
-   assign doa = RAM[read_addra];
-   assign dob = RAM[read_addrb];
-endmodule
