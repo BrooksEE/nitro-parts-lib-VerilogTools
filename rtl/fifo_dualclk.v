@@ -1,6 +1,6 @@
 // Dual Clock Fifo. 
 
-module FIFO #(parameter ADDR_WIDTH=4, DATA_WIDTH=8)
+module fifo_dualclk #(parameter ADDR_WIDTH=4, DATA_WIDTH=8)
    (
     input wclk,
     input rclk, 
