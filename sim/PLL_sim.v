@@ -8,6 +8,7 @@ module PLL_sim
   output     output_clk,
   input [31:0] pll_mult,
   input [31:0] pll_div,
+  output     locked,
   input debug);
 
 
@@ -23,6 +24,7 @@ module PLL_sim
       x=$c("m_PLL->posedge(", debug, ")");
    end
    assign output_clk = $c("m_PLL->clkFX (", input_clk, ",", pll_mult, ",", pll_div, ",", debug, ")" );
+   assign locked = $c("m_PLL->locked()" );
 
 `systemc_header
 #ifndef __PLL_H__
@@ -48,6 +50,8 @@ class t_PLL
   
   ~t_PLL() {
   }
+
+  inline bool locked() { return m_locked; }
   
   inline bool posedge(int32_t debug) {
     m_posedge1 = m_posedge2;
@@ -79,7 +83,7 @@ class t_PLL
     bool clko;
     int dT = (m_T*d) / 2 / m;
     if (!dT) return false;
-    clko = (main_time / dT) % 2; 
+    clko = ((main_time-1) / dT) % 2 == 0; 
     return clko;
   }
 
