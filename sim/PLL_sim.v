@@ -37,15 +37,22 @@ class t_PLL
  private:
    int m_posedge2;
    int m_posedge1;        
-   int m_locked;
-   int m_locking;
-   int m_T;
+   bool m_locked;
+   double m_T;
+
+   double m_accum;
+   int m_cnt;
+   int m_delta1;
+
  public:
   // CONSTRUCTORS
    t_PLL()
    {
-    m_posedge2 = m_posedge1 = m_locked = m_locking = 0;
+    printf ( "PLL %p created\n", this );
+    m_posedge2 = m_posedge1 = m_locked = 0;
     m_T = 10;
+
+    m_accum = m_cnt = m_delta1 = 0;
     }
   
   ~t_PLL() {
@@ -58,22 +65,42 @@ class t_PLL
     m_posedge2 = main_time;
     int delta = m_posedge2-m_posedge1;
 
-    if (m_locking < 10) { // 10 in a row
-        if (m_T == delta) m_locking++;
-        else m_locking=0;
-        if (m_locking==10) {
-            if (debug) printf ( "LOCKING pll %p at %d\n", this, m_T );
-        }
-    } else {
-        if (m_T == delta) m_locked++;
-        else {
-            if (debug) printf ( "WARN pll %p new old=%d new=%d\n", this, m_T, delta );
-            m_locked=0;
-            m_locking=0;
-        }
+    #define LOCK_COUNT 100
+    #define SKIP 10
+
+
+    if (m_cnt<LOCK_COUNT+SKIP) {
+        ++m_cnt;
+        // ignore first 10
+        if (m_cnt > SKIP ) m_accum+=delta;
     }
 
-    m_T = delta; 
+    double expected = m_cnt > SKIP ? m_accum/(m_cnt-SKIP) : 0;
+    double measured = ((double)delta+m_delta1)/2; 
+    double jitter = abs(expected-measured);
+
+    if (!m_locked) {
+        if (debug) {
+            printf ( "PLL %p locking cnt=%d delta=%d expected=%0.3f measured=%0.3f\n", this, m_cnt, delta, expected, measured);
+        }
+        if (m_cnt>=LOCK_COUNT+SKIP && jitter <.5) {
+                m_locked=true;       
+                m_T=expected;
+                if (debug) printf ( "PLL %p lock with m_T=%0.3f\n", this, m_T );
+        } else if (m_cnt>=LOCK_COUNT+SKIP) {
+            m_cnt=0;
+            m_accum=0;
+            if (debug) printf ( "PLL %p lock fail try again\n", this );
+        }
+   } else if (jitter > .5) {
+        printf ( "WARN PLL %p too much jitter. expected=%0.3f measured=%0.3f\n", this, expected, measured );
+        m_locked=false;
+        m_cnt=0;
+        m_accum=0;
+    }
+
+    m_delta1=delta;
+
     return true;
 
   }
@@ -81,9 +108,9 @@ class t_PLL
   inline bool clkFX(bool x, int32_t m, int32_t d, int32_t debug) {
     if ( !m || !d || !m_locked || !m_T) { return false; }
     bool clko;
-    int dT = (m_T*d) / 2 / m;
+    double dT = (double)m_T*d / 2 / m;
     if (!dT) return false;
-    clko = ((main_time-1) / dT) % 2 == 0; 
+    clko = (int)(round(((double)main_time-1)) / dT) % 2 == 0; 
     return clko;
   }
 
