@@ -19,17 +19,24 @@ module PLL_sim
 
 `else
 
-   reg x;
+   reg x,y; // so they don't get optimized out
+   reg [31:0] m_s, d_s;
+   wire reset = pll_mult != m_s || pll_div != d_s; 
    always @(posedge input_clk) begin
-      x=$c("m_PLL->posedge(", debug, ")");
+      m_s <= pll_mult;
+      d_s <= pll_div;
+      x=$c("m_PLL->posedge(", debug, ",", reset, ")");
+      y=$c("m_PLL->locked()" );
    end
    assign output_clk = $c("m_PLL->clkFX (", input_clk, ",", pll_mult, ",", pll_div, ",", debug, ")" );
-   assign locked = $c("m_PLL->locked()" );
+   assign locked = y; 
 
 `systemc_header
 #ifndef __PLL_H__
 #define __PLL_H__
 extern unsigned int main_time;
+
+#define LOCK_COUNT 5 
 
 class t_PLL
   {
@@ -38,10 +45,10 @@ class t_PLL
    int m_posedge2;
    int m_posedge1;        
    bool m_locked;
-   double m_T;
+   int m_T;
 
-   double m_accum;
    int m_cnt;
+   int m_fail;
    int m_delta1;
 
  public:
@@ -51,52 +58,45 @@ class t_PLL
     printf ( "PLL %p created\n", this );
     m_posedge2 = m_posedge1 = m_locked = 0;
     m_T = 10;
+    m_cnt = m_delta1 = m_fail = 0;
 
-    m_accum = m_cnt = m_delta1 = 0;
     }
   
   ~t_PLL() {
   }
 
-  inline bool locked() { return m_locked; }
+  inline bool locked() { 
+    return m_locked;
+  }
   
-  inline bool posedge(int32_t debug) {
+  inline bool posedge(int32_t debug, bool reset) {
     m_posedge1 = m_posedge2;
     m_posedge2 = main_time;
     int delta = m_posedge2-m_posedge1;
 
-    #define LOCK_COUNT 100
-    #define SKIP 10
-
-
-    if (m_cnt<LOCK_COUNT+SKIP) {
-        ++m_cnt;
-        // ignore first 10
-        if (m_cnt > SKIP ) m_accum+=delta;
+    if (reset) {
+        m_cnt=0;
+        m_locked=0;
+        m_fail=0;
     }
 
-    double expected = m_cnt > SKIP ? m_accum/(m_cnt-SKIP) : 0;
-    double measured = ((double)delta+m_delta1)/2; 
-    double jitter = abs(expected-measured);
-
-    if (!m_locked) {
-        if (debug) {
-            printf ( "PLL %p locking cnt=%d delta=%d expected=%0.3f measured=%0.3f\n", this, m_cnt, delta, expected, measured);
-        }
-        if (m_cnt>=LOCK_COUNT+SKIP && jitter <.5) {
-                m_locked=true;       
-                m_T=expected;
-                if (debug) printf ( "PLL %p lock with m_T=%0.3f\n", this, m_T );
-        } else if (m_cnt>=LOCK_COUNT+SKIP) {
-            m_cnt=0;
-            m_accum=0;
-            if (debug) printf ( "PLL %p lock fail try again\n", this );
-        }
-   } else if (jitter > .5) {
-        printf ( "WARN PLL %p too much jitter. expected=%0.3f measured=%0.3f\n", this, expected, measured );
-        m_locked=false;
-        m_cnt=0;
-        m_accum=0;
+    if (m_cnt<LOCK_COUNT) {
+       if (delta == m_delta1) {
+         ++m_cnt;
+       } else {
+         ++m_fail; 
+         if (debug && (m_fail % 100==0))  printf ( "PLL %p fail to lock delta1=%d delta=%d\n", this, m_delta1, delta );
+       }
+    } else {
+       if (m_delta1 != delta) {
+          m_locked=false;
+          m_cnt=0;
+          printf ( "PLL %p clock change detected unlocking.\n", this ); 
+       } else {
+          m_locked=true;
+          m_T=delta;
+          m_fail=0;
+       }
     }
 
     m_delta1=delta;
@@ -108,9 +108,18 @@ class t_PLL
   inline bool clkFX(bool x, int32_t m, int32_t d, int32_t debug) {
     if ( !m || !d || !m_locked || !m_T) { return false; }
     bool clko;
-    double dT = (double)m_T*d / 2 / m;
+    int dT = round((double)m_T*d / 2 / m);
+    if (m_cnt==LOCK_COUNT) {
+        int mod = (m_T * d) % (2*m);
+        ++m_cnt;
+        if ( mod ) {
+            printf ( "FAIL PLL %p not integer divisible by m/d m_T=%d div=%d m=%d rounded d_T=%d\n", this, m_T, d, m, dT ); 
+        } else {
+            printf ( "SUCCESS pLL %p m_T=%d * d=%d / 2 / m=%d = dT=%d\n", this, m_T, d, m, dT );
+        }
+    }
     if (!dT) return false;
-    clko = (int)(round(((double)main_time-1)) / dT) % 2 == 0; 
+    clko = ((main_time-1) / dT) % 2 == 0; 
     return clko;
   }
 
