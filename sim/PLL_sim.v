@@ -4,7 +4,8 @@
  */
 
 module PLL_sim
-    #( parameter PLL_NAME="PLL_sim"
+    #( parameter PLL_NAME="PLL_sim",
+       parameter MAX_NAME_LEN=256 // must be more than 8 or class won't compile
      )
  (input      input_clk,
   output     output_clk,
@@ -21,8 +22,11 @@ module PLL_sim
 
 `else
    /* verilator lint_off width */
-   reg [63:0] pll_name = PLL_NAME;
+   // in case len is less than 8 this ensures that 
+   // the pll_name type will be resolved to WData * and not uint64_t
+   reg [MAX_NAME_LEN*8:0] pll_concat = PLL_NAME;
    /* verilator lint_on width */
+   reg [(MAX_NAME_LEN+1)*8:0] pll_name = { 8'b0, pll_concat }; // ensure we have a zero byte at the top
    reg x,y; // so they don't get optimized out
    reg [31:0] m_s, d_s;
    wire reset = pll_mult != m_s || pll_div != d_s; 
@@ -39,7 +43,8 @@ module PLL_sim
 #ifndef __PLL_H__
 #define __PLL_H__
 
-#include <vpi_user.h>
+
+#include <memory>
 
 extern unsigned int main_time;
 
@@ -83,25 +88,30 @@ class t_PLL
     m_locked=0;
   }
 
-  inline const char* pll_name (int64_t pn) {
-    //vpiHandle h = vpi_handle_by_name((PLI_BYTE8*)"PLL_NAME", NULL);
-    //s_vpi_value v;
-    //v.format = vpiStringVal;
-    //vpi_get_value(h,&v); 
-    //return strdup(v.value.str); 
-    //printf ( "ull val: %llu\n", pn ); 
-    char chars[9];
-    chars[8]=0;
-    int pos=8;
-    while (pn>0 && pos>0) {
-       chars[--pos] = pn&0xff; 
-       pn >>= 8;
+  inline std::auto_ptr<char> pll_name (unsigned int *pn) {
+    
+    // 4 chars per int 
+    // 0 byte is at the beginning of the string not the end
+    int chars = 0;
+    int pos=0;
+    while (pn[pos++]) ++chars;
+    char* str = new char[chars*4+1];
+    str[chars*4]=0;
+    int c=chars*4;
+    for (pos=0;pos<=chars;++pos) {
+        int word=pn[pos];
+        while (word & 0xff) {
+           str[--c] = word&0xff; 
+           word >>= 8;
+        }
     }
-    return strdup(chars+pos);
-    //return "test";
+    std::auto_ptr<char> ret = auto_ptr<char>(strdup ( str+c ));
+    delete [] str;
+    return ret;
+
   }
   
-  inline bool posedge(int32_t debug, bool reset, int64_t pn ) {
+  inline bool posedge(int32_t debug, bool reset, unsigned int *pn ) {
     m_posedge1 = m_posedge2;
     m_posedge2 = main_time;
     int delta = m_posedge2-m_posedge1;
@@ -116,13 +126,13 @@ class t_PLL
        } else {
          ++m_fail; 
 
-         if (debug && (m_fail % 100==0))  printf ( "PLL %s fail to lock delta1=%d delta=%d\n", pll_name(pn), m_delta1, delta );
+         if (debug && (m_fail % 100==0))  printf ( "PLL %s fail to lock delta1=%d delta=%d\n", pll_name(pn).get(), m_delta1, delta );
        }
     } else {
        if (m_delta1 != delta) {
           m_locked=false;
           m_cnt=0;
-          printf ( "PLL %s clock change detected unlocking.\n", pll_name(pn)); 
+          printf ( "PLL %s clock change detected unlocking.\n", pll_name(pn).get()); 
        } else {
           m_locked=true;
           m_T=delta;
@@ -136,7 +146,7 @@ class t_PLL
 
   }
 
-  inline bool clkFX(bool x, int32_t m, int32_t d, int32_t debug, int64_t pn) {
+  inline bool clkFX(bool x, int32_t m, int32_t d, int32_t debug, unsigned int *pn) {
     if ( !m || !d || !m_locked || !m_T) { return false; }
     bool clko;
     int dT = round((double)m_T*d / 2 / m);
@@ -144,9 +154,9 @@ class t_PLL
         int mod = (m_T * d) % (2*m);
         ++m_cnt;
         if ( mod ) {
-            printf ( "FAIL PLL %s not integer divisible by m/d m_T=%d div=%d m=%d rounded d_T=%d\n", pll_name(pn), m_T, d, m, dT ); 
+            printf ( "FAIL PLL %s not integer divisible by m/d m_T=%d div=%d m=%d rounded d_T=%d\n", pll_name(pn).get(), m_T, d, m, dT ); 
         } else {
-            printf ( "SUCCESS PLL %s m_T=%d * d=%d / 2 / m=%d = dT=%d\n", pll_name(pn), m_T, d, m, dT );
+            printf ( "SUCCESS PLL %s m_T=%d * d=%d / 2 / m=%d = dT=%d\n", pll_name(pn).get(), m_T, d, m, dT );
         }
         m_dT = dT;
     } else if (m_cnt > LOCK_COUNT && m_dT != dT) {
