@@ -1,0 +1,5 @@
+
+Import('env')
+
+# Add python package
+env.Py( 'lib/VerilogTools', Glob('py/VerilogTools/*') )
