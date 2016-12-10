@@ -36,7 +36,9 @@ module PLL_sim
       x=$c("m_PLL->posedge(", debug, ",", reset, ",", pll_name, ")");
       y=$c("m_PLL->locked()" );
    end
-   assign output_clk = $c("m_PLL->clkFX (", input_clk, ",", pll_mult, ",", pll_div, ",", debug, ",", pll_name, ")" );
+   reg oclk /*verilator public_flat_rw @(posedge input_clk) */;
+   assign oclk = $c("m_PLL->clkFX (", input_clk, ",", pll_mult, ",", pll_div, ",", debug, ",", pll_name, ")" );
+   assign output_clk = oclk;
    assign locked = y; 
 
 `systemc_header
@@ -156,6 +158,7 @@ class t_PLL
         if ( mod ) {
             printf ( "FAIL PLL %s not integer divisible by m/d m_T=%d div=%d m=%d rounded d_T=%d\n", pll_name(pn).get(), m_T, d, m, dT ); 
         } else {
+           if(debug)
             printf ( "SUCCESS PLL %s m_T=%d * d=%d / 2 / m=%d = dT=%d\n", pll_name(pn).get(), m_T, d, m, dT );
         }
         m_dT = dT;
