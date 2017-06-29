@@ -3,6 +3,8 @@
  * a PLL.
  */
 
+`timescale 1ps/1ps
+
 module PLL_sim
     #( parameter PLL_NAME="PLL_sim",
        parameter MAX_NAME_LEN=256 // must be more than 8 or class won't compile
@@ -17,8 +19,27 @@ module PLL_sim
 
 `ifndef verilator
 
- reg output_clkr; // driven in testbench for now.
+ reg output_clkr;
+ initial output_clkr=0;
  assign output_clk=output_clkr;
+
+ integer in_period0=1;
+ integer in_period1=2;
+ integer in_period2=3;
+ integer cur_p, last_time=0, out_period=100000;
+ assign locked = in_period2 == in_period1 &&
+                 in_period1 == in_period0;
+ always @(posedge input_clk) begin
+    cur_p = $time - last_time;
+    in_period2 = in_period1;
+    in_period1 = in_period0;
+    in_period0 = cur_p;
+    last_time=$time;
+    out_period = locked ? cur_p / pll_mult * pll_div / 2 : out_period;
+ end  
+ 
+
+   always #out_period output_clkr = ~output_clkr;
 
 `else
    /* verilator lint_off width */
